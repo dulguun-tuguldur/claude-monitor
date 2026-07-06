@@ -1,5 +1,6 @@
 // ABOUTME: Reads and update-only-writes Claude Code credential items in the macOS
 // ABOUTME: Keychain, resolving the per-CLAUDE_CONFIG_DIR service name per account.
+import CryptoKit
 import Foundation
 import Security
 
@@ -17,19 +18,20 @@ public struct KeychainStore: CredentialStore {
         self.servicePrefixOverride = servicePrefixOverride
     }
 
-    /// Candidate service names, tried in order. Pattern confirmed/adjusted by the
-    /// Task 0 spike (`spike-results.md`). No cross-account fallback: a non-default
-    /// dir must never resolve to the default entry, or accounts would show each
-    /// other's data.
+    /// Candidate service names, tried in order. For non-default accounts, Claude Code
+    /// suffixes the service name with the first 8 hex characters of the SHA-256 digest
+    /// of the config dir's absolute path (confirmed against real Keychain entries and
+    /// daemon roster files — see `spike-results.md`). No cross-account fallback: a
+    /// non-default dir must never resolve to the default entry, or accounts would show
+    /// each other's data.
     func candidateServices(for account: Account) -> [String] {
         // Test/E2E seam: service name is simply "<prefix><label>".
         if let prefix = servicePrefixOverride { return [prefix + account.label] }
         let isDefault = account.configDir.lastPathComponent == ".claude"
         if isDefault { return ["Claude Code-credentials"] }
-        return [
-            "Claude Code-credentials-\(account.configDir.path)",
-            "Claude Code-credentials-\(account.configDir.lastPathComponent)",
-        ]
+        let digest = SHA256.hash(data: Data(account.configDir.path.utf8))
+        let suffix = digest.compactMap { String(format: "%02x", $0) }.joined().prefix(8)
+        return ["Claude Code-credentials-\(suffix)"]
     }
 
     func resolveService(for account: Account) -> String? {

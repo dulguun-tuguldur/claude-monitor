@@ -54,4 +54,14 @@ final class KeychainStoreTests: XCTestCase {
         let store = KeychainStore(servicePrefixOverride: prefix)
         XCTAssertThrowsError(try store.readCredentials(for: account))
     }
+
+    /// Claude Code names non-default accounts' Keychain items using the first 8 hex
+    /// characters of the SHA-256 digest of the config dir's absolute path — confirmed
+    /// against real Keychain entries and daemon roster files, not the raw path or
+    /// directory basename.
+    func testCandidateServicesUsesSHA256PathPrefixForNonDefaultAccount() {
+        let store = KeychainStore(servicePrefixOverride: nil)
+        let nonDefault = Account(configDir: URL(fileURLWithPath: "/Users/dulguun/.claude-me"))
+        XCTAssertEqual(store.candidateServices(for: nonDefault), ["Claude Code-credentials-9b72ce99"])
+    }
 }
