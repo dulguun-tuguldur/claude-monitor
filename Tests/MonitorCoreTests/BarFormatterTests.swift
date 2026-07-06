@@ -35,4 +35,25 @@ final class BarFormatterTests: XCTestCase {
         XCTAssertEqual(segs[2].level, .warning)
         XCTAssertEqual(segs[4].level, .normal)
     }
+
+    func testSessionResetTextFormatsAsAMPM() {
+        let utc = TimeZone(identifier: "UTC")!
+        var comps = DateComponents()
+        comps.year = 2026; comps.month = 7; comps.day = 6; comps.hour = 15; comps.minute = 45
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let resetsAt = calendar.date(from: comps)!
+        let snap = UsageSnapshot(session: WindowUsage(utilization: 42, resetsAt: resetsAt),
+                                  weekAll: nil, weekSonnet: nil, weekOpus: nil, fetchedAt: Date())
+        XCTAssertEqual(BarFormatter.sessionResetText(for: snap, timeZone: utc), "3:45 PM")
+    }
+
+    func testSessionResetTextNilWhenMissing() {
+        XCTAssertNil(BarFormatter.sessionResetText(for: nil))
+        let noReset = UsageSnapshot(session: WindowUsage(utilization: 42, resetsAt: nil),
+                                     weekAll: nil, weekSonnet: nil, weekOpus: nil, fetchedAt: Date())
+        XCTAssertNil(BarFormatter.sessionResetText(for: noReset))
+        let noSession = UsageSnapshot(session: nil, weekAll: nil, weekSonnet: nil, weekOpus: nil, fetchedAt: Date())
+        XCTAssertNil(BarFormatter.sessionResetText(for: noSession))
+    }
 }

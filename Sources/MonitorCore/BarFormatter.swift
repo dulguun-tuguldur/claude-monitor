@@ -40,4 +40,21 @@ public enum BarFormatter {
     public static func plainText(for snapshot: UsageSnapshot?) -> String {
         segments(for: snapshot).map(\.text).joined()
     }
+
+    /// Locale fixed to en_US_POSIX so the bar always reads "3:45 PM" regardless of
+    /// the system locale, since the AM/PM format was requested explicitly.
+    private static let sessionResetFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "h:mm a"
+        return f
+    }()
+
+    /// Session (5-hour window) reset time in AM/PM format, e.g. "3:45 PM". Nil when
+    /// the snapshot, its session window, or the window's reset time is absent.
+    public static func sessionResetText(for snapshot: UsageSnapshot?, timeZone: TimeZone = .current) -> String? {
+        guard let resetsAt = snapshot?.session?.resetsAt else { return nil }
+        sessionResetFormatter.timeZone = timeZone
+        return sessionResetFormatter.string(from: resetsAt)
+    }
 }

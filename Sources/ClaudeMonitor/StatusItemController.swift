@@ -81,6 +81,10 @@ final class StatusItemController: NSObject {
                 let c = dimAll ? NSColor.secondaryLabelColor : color(for: seg.level)
                 title.append(NSAttributedString(string: seg.text, attributes: [.font: font, .foregroundColor: c]))
             }
+            if let resetText = BarFormatter.sessionResetText(for: snapshot) {
+                title.append(NSAttributedString(string: " " + resetText,
+                    attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+            }
         }
         statusItem.button?.attributedTitle = title
     }
