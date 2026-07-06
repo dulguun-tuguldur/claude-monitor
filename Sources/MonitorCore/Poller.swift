@@ -57,11 +57,19 @@ public final class Poller {
             statuses[account.id] = .ok(try await usage.fetchUsage(accessToken: token))
         } catch UsageError.unauthorized {
             // Token looked fresh but the API disagrees — refresh once and retry.
-            if let refreshed = await refreshAndPersist(account: account, creds: creds),
-               let snap = try? await usage.fetchUsage(accessToken: refreshed) {
-                statuses[account.id] = .ok(snap)
-            } else if statuses[account.id] != .reloginNeeded {
+            guard let refreshed = await refreshAndPersist(account: account, creds: creds) else {
+                // refreshAndPersist already set the correct status on failure — don't touch it.
+                return
+            }
+            do {
+                statuses[account.id] = .ok(try await usage.fetchUsage(accessToken: refreshed))
+            } catch UsageError.unauthorized {
+                // Still unauthorized with a freshly rotated token — genuinely needs relogin.
                 statuses[account.id] = .reloginNeeded
+            } catch {
+                // Transient failure on the retry — the refresh itself succeeded, so degrade
+                // rather than claiming relogin is needed.
+                degradeToStale(account)
             }
         } catch {
             degradeToStale(account)

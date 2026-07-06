@@ -75,6 +75,27 @@ final class PollerTests: XCTestCase {
         XCTAssertEqual(snap.session?.utilization, 42.0) // old data retained
     }
 
+    func testRetryAfterRefreshFailsTransientlyDoesNotSetReloginNeeded() async throws {
+        store.creds[acct.id] = try fixtureCreds("credentials-valid")
+        var usageCallCount = 0
+        MockURLProtocol.handler = { req in
+            if req.url!.path.contains("oauth/token") {
+                return try MockURLProtocol.respond(status: 200,
+                    json: #"{"access_token":"A2","refresh_token":"R2","expires_in":28800}"#)(req)
+            }
+            usageCallCount += 1
+            if usageCallCount == 1 {
+                return try MockURLProtocol.respond(status: 401, json: "{}")(req)
+            }
+            throw URLError(.notConnectedToInternet)
+        }
+        let poller = makePoller()
+        await poller.pollAll()
+        XCTAssertNotEqual(poller.states().first?.status, .reloginNeeded)
+        XCTAssertEqual(store.writes.count, 1) // refresh write-back happened despite the retry failing
+        XCTAssertEqual(store.creds[acct.id]?.accessToken, "A2") // rotation persisted
+    }
+
     func testNoCredentialsShowsNotLoggedIn() async {
         let poller = makePoller()
         await poller.pollAll()
