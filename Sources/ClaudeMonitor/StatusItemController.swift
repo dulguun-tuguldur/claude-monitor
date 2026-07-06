@@ -163,11 +163,3 @@ final class StatusItemController: NSObject {
         NSApp.activate(ignoringOtherApps: true)
     }
 }
-
-// Replaced by SettingsWindow.swift in the next task.
-enum SettingsWindowFactory {
-    @MainActor static func make(settings: Settings, onChange: @escaping () -> Void) -> NSWindow {
-        NSWindow(contentRect: .init(x: 0, y: 0, width: 300, height: 100),
-                 styleMask: [.titled, .closable], backing: .buffered, defer: false)
-    }
-}
