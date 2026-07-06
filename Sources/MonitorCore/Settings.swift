@@ -3,7 +3,7 @@
 import Foundation
 
 public final class Settings: @unchecked Sendable {
-    public static let suiteName = "mn.tanasoft.claude-monitor"
+    public static let suiteName = "mn.tanasoft.claude-monitor.settings"
     let defaults: UserDefaults
 
     public init(defaults: UserDefaults = UserDefaults(suiteName: Settings.suiteName)!) {
