@@ -25,9 +25,12 @@ echo "0.0.0-e2e" > VERSION
 git add -A
 git commit -q -m "chore: e2e setup"
 
-# Temp tap with a sentinel cask to prove version/sha256 are rewritten. The two
+# Temp tap at the clone's sibling ($WORK/homebrew-tap) so release.sh's default
+# CM_TAP_DIR (../homebrew-tap, relative to the repo root it cd's into) resolves
+# here. We deliberately do NOT set CM_TAP_DIR in the environment — this is the
+# exact path `make release` uses, where CM_TAP_DIR is not exported. The two
 # leading spaces on version/sha256 match release.sh's sed anchors.
-TAP="$WORK/tap"
+TAP="$WORK/homebrew-tap"
 mkdir -p "$TAP/Casks"
 cat > "$TAP/Casks/claude-monitor.rb" <<'RUBY'
 cask "claude-monitor" do
@@ -37,7 +40,7 @@ cask "claude-monitor" do
 end
 RUBY
 
-OUT=$(CM_TAP_DIR="$TAP" bash scripts/release.sh --dry-run)
+OUT=$(bash scripts/release.sh --dry-run)
 echo "$OUT"
 
 ZIP="dist/ClaudeMonitor-0.0.0-e2e.zip"

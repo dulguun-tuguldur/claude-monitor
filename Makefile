@@ -3,7 +3,9 @@
 .PHONY: build test e2e app verify-app release run new-account test-new-account bump test-bump test-release test-cask
 
 # Homebrew tap checkout (sibling of this repo by default); holds the cask.
+# Exported so `make release` / `make release CM_TAP_DIR=...` reaches release.sh.
 CM_TAP_DIR ?= ../homebrew-tap
+export CM_TAP_DIR
 
 build:
 	swift build

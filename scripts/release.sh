@@ -4,6 +4,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Where the Homebrew tap checkout lives. Default to the sibling repo so both
+# `make release` and a direct invocation sync the cask without CM_TAP_DIR in
+# the environment. Set CM_TAP_DIR="" explicitly to skip the cask sync.
+CM_TAP_DIR="${CM_TAP_DIR-../homebrew-tap}"
+
 DRY_RUN=0
 if [ "${1:-}" = "--dry-run" ]; then DRY_RUN=1; fi
 
