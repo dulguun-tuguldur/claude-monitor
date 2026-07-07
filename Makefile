@@ -1,6 +1,6 @@
 # ABOUTME: Developer entry points for building, testing, bundling, and running
 # ABOUTME: the Claude Monitor menu bar app.
-.PHONY: build test e2e app verify-app release run new-account test-new-account bump test-bump
+.PHONY: build test e2e app verify-app release run new-account test-new-account bump test-bump test-release
 
 build:
 	swift build
@@ -25,6 +25,9 @@ bump:
 
 test-bump:
 	bash scripts/bump-e2e.sh
+
+test-release:
+	bash scripts/release-e2e.sh
 
 run:
 	swift run ClaudeMonitor
