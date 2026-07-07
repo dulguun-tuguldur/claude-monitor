@@ -67,9 +67,21 @@ After the first release fills the cask's `sha256`, verify the install path:
 
 ```sh
 brew tap dulguun-tuguldur/tap
+brew trust dulguun-tuguldur/tap       # Homebrew requires trusting third-party taps
 brew audit --cask claude-monitor      # now that it is tapped
 brew install --cask claude-monitor
 ```
+
+Notes:
+
+- If an old `Claude Monitor.app` from `make app` is already in `/Applications`,
+  the cask install refuses to clobber it. Remove it first
+  (`rm -rf "/Applications/Claude Monitor.app"`) or install with
+  `brew install --cask --force claude-monitor`.
+- The published cask's `sha256` must match the release zip. `make release`
+  keeps it in sync automatically; if a release was cut before that sync worked,
+  fix it by hand: `shasum -a 256 dist/ClaudeMonitor-<version>.zip`, paste the
+  hash into the tap cask, commit, and push.
 
 ## Tests
 
