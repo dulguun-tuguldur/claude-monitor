@@ -48,6 +48,26 @@ end users should never need to set any of them.
 | `CM_USAGE_URL` | Overrides the base URL for the usage API. |
 | `CM_TOKEN_URL` | Overrides the URL used for OAuth token refresh. |
 
+## Provisioning a new account
+
+To add another Claude Code account for the monitor to track:
+
+```sh
+make new-account NAME=<name> [FROM=~/.claude-<base-account>]
+```
+
+This scaffolds `~/.claude-<name>` by cloning the base account's
+`settings.json` (notifications included), skills, hooks, plugin manifests
+and marketplaces, and user-scoped MCP server config. It deliberately does
+**not** copy login credentials or session state (history, projects, caches,
+etc.) — those stay behind so the new account starts clean.
+
+After it runs, add the printed shell alias to your `~/.zshrc`, run it once
+(or `CLAUDE_CONFIG_DIR=~/.claude-<name> claude`), and run `/login` with that
+account's own Anthropic credentials. Claude Monitor shows the account as
+"not logged in" until then, and picks up its usage automatically on the
+next poll — no restart needed.
+
 ## Troubleshooting
 
 - **"not logged in" in the account dropdown**: run that account's
@@ -66,3 +86,5 @@ end users should never need to set any of them.
 | `make e2e` | Runs `scripts/e2e.sh`: real binary, real (throwaway) Keychain item, stub HTTP server |
 | `make app` | Runs `scripts/make-app.sh`: bundles a release build into `Claude Monitor.app` |
 | `make run` | `swift run ClaudeMonitor` |
+| `make new-account NAME=<name> [FROM=<base-dir>]` | Runs `scripts/new-account.sh`: scaffolds a new `~/.claude-<name>` account dir |
+| `make test-new-account` | Runs `scripts/new-account-e2e.sh`: validation, copy correctness, and real-app discovery for `new-account.sh` |

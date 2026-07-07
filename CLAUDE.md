@@ -31,6 +31,10 @@ separate so the logic can be tested without touching AppKit/SwiftUI:
 - `make e2e` — run end-to-end tests.
 - `make run` — run the app from source (`swift run`).
 - `make app` — build a distributable `.app` bundle.
+- `make new-account NAME=<name> [FROM=<base-dir>]` — scaffold a new
+  `~/.claude-<name>` account config dir (`scripts/new-account.sh`).
+- `make test-new-account` — test the account-provisioning script
+  (`scripts/new-account-e2e.sh`).
 
 (Note: the `Makefile` backing these targets is added in a later task; Task 0
 only establishes the SPM package skeleton itself. Until then, use
