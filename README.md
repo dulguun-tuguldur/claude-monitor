@@ -10,23 +10,32 @@ each account's Claude Code session by hand.
 
 ## Install
 
-1. Build the app bundle:
+### Homebrew (recommended)
 
-   ```sh
-   make app
-   ```
+```sh
+brew tap dulguun-tuguldur/tap
+brew install --cask claude-monitor
+```
 
-   This produces `Claude Monitor.app` in the repo root (release build,
-   ad-hoc signed, `LSUIElement` so it runs with no Dock icon).
+Claude Monitor is self-signed and not notarized, so on first launch macOS
+Gatekeeper will refuse to open it. To open it the first time, right-click
+**Claude Monitor** in `/Applications`, choose **Open**, then **Open** again in
+the dialog (or use System Settings > Privacy & Security > "Open Anyway"). This
+is a one-time step per installed version.
 
-2. Install it:
+Then launch it from `/Applications` and open the Settings window from the menu
+bar item if you want "Launch at Login".
 
-   ```sh
-   cp -R "Claude Monitor.app" /Applications/
-   ```
+### Build from source
 
-3. Launch it from `/Applications`, then open the Settings window from the
-   menu bar item if you want to turn on "Launch at Login".
+```sh
+make app
+cp -R "Claude Monitor.app" /Applications/
+```
+
+`make app` produces `Claude Monitor.app` in the repo root — a release build,
+signed with the self-signed `claude-monitor-signing` identity (see
+`docs/signing.md`), `LSUIElement` so it runs with no Dock icon.
 
 ### First-run Keychain prompt
 
@@ -83,6 +92,11 @@ next poll — no restart needed.
 | --- | --- |
 | `make build` | `swift build` |
 | `make test` | `swift test` (unit tests for `MonitorCore`) |
+| `make bump` | Runs `scripts/bump.sh`: derives the next version + changelog from commits |
+| `make test-bump` | Runs `scripts/bump-e2e.sh`: bump.sh in a throwaway repo |
+| `make release` | Runs `scripts/release.sh`: build, verify, zip, publish, sync cask |
+| `make test-release` | Runs `scripts/release-e2e.sh`: dry-run release in a throwaway clone |
+| `make test-cask` | `brew style` on the Homebrew cask |
 | `make e2e` | Runs `scripts/e2e.sh`: real binary, real (throwaway) Keychain item, stub HTTP server |
 | `make app` | Runs `scripts/make-app.sh`: bundles a release build into `Claude Monitor.app` |
 | `make run` | `swift run ClaudeMonitor` |
