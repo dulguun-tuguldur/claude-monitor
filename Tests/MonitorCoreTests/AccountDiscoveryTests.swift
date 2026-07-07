@@ -32,4 +32,19 @@ final class AccountDiscoveryTests: XCTestCase {
         XCTAssertEqual(Account(configDir: URL(fileURLWithPath: "/x/.claude")).label, "main")
         XCTAssertEqual(Account(configDir: URL(fileURLWithPath: "/x/.claude-tergel")).label, "tergel")
     }
+
+    // Fresh default install: ~/.claude/ exists with NO inner .claude.json — the
+    // default account's config file lives at the home-level sibling ~/.claude.json.
+    func testDiscoversDefaultAccountViaHomeLevelClaudeJSON() throws {
+        let freshRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cm-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: freshRoot) }
+        let claudeDir = freshRoot.appendingPathComponent(".claude")
+        try FileManager.default.createDirectory(at: claudeDir, withIntermediateDirectories: true)
+        // sibling home-level config file, NOT inside ~/.claude/
+        try Data("{}".utf8).write(to: freshRoot.appendingPathComponent(".claude.json"))
+
+        let labels = AccountDiscovery.discover(root: freshRoot).map(\.label)
+        XCTAssertEqual(labels, ["main"])
+    }
 }

@@ -23,7 +23,9 @@ public enum AccountDiscovery {
         return FileManager.default.homeDirectoryForCurrentUser
     }
 
-    /// A dir is an account iff named `.claude` or `.claude-<name>` and contains `.claude.json`.
+    /// A dir is an account iff named `.claude` or `.claude-<name>` and has a `.claude.json`:
+    /// inside the dir for aliased accounts, or the home-level sibling `~/.claude.json` for
+    /// the default `.claude` account.
     public static func discover(root: URL = defaultRoot()) -> [Account] {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
@@ -32,7 +34,12 @@ public enum AccountDiscovery {
                 let name = url.lastPathComponent
                 guard name == ".claude" || name.hasPrefix(".claude-") else { return false }
                 guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { return false }
-                return fm.fileExists(atPath: url.appendingPathComponent(".claude.json").path)
+                // Aliased CLAUDE_CONFIG_DIR accounts keep .claude.json inside the dir.
+                // The default account keeps it at the home-level sibling ~/.claude.json,
+                // so accept that too for `.claude` — a fresh `claude` install has no
+                // inner .claude.json.
+                if fm.fileExists(atPath: url.appendingPathComponent(".claude.json").path) { return true }
+                return name == ".claude" && fm.fileExists(atPath: root.appendingPathComponent(".claude.json").path)
             }
             .map(Account.init(configDir:))
             .sorted { a, b in
