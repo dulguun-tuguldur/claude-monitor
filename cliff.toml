@@ -1,0 +1,46 @@
+# ABOUTME: git-cliff config — parses conventional commits into a grouped,
+# ABOUTME: keep-a-changelog-style CHANGELOG.md; release tags match v[0-9]*.
+
+[changelog]
+header = """
+# Changelog
+
+All notable changes to Claude Monitor are documented in this file.
+It is generated from conventional commit messages by git-cliff.
+"""
+body = """
+{% if version -%}
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else -%}
+## [unreleased]
+{% endif -%}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | upper_first | trim }}
+{%- endfor %}
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+filter_commits = false
+tag_pattern = "v[0-9]*"
+topo_order = false
+sort_commits = "oldest"
+commit_parsers = [
+  { message = "^feat", group = "<!-- 1 -->Features" },
+  { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
+  { message = "^doc", group = "<!-- 3 -->Documentation" },
+  { message = "^perf", group = "<!-- 4 -->Performance" },
+  { message = "^refactor", group = "<!-- 5 -->Refactoring" },
+  { message = "^test", group = "<!-- 6 -->Testing" },
+  { message = "^chore\\(release\\):", skip = true },
+  { message = "^chore", group = "<!-- 7 -->Miscellaneous" },
+  { message = "^ci", group = "<!-- 7 -->Miscellaneous" },
+  { message = ".*", group = "<!-- 0 -->Other" },
+]

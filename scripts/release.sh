@@ -31,11 +31,25 @@ SHA256=$(shasum -a 256 "$ZIP" | awk '{print $1}')
 echo "release: artifact $ZIP"
 echo "release: sha256  $SHA256"
 
+# Release notes come from the changelog section for this version. --unreleased
+# --tag names the pending version correctly even though the tag does not exist
+# yet (gh release create makes it). Fall back to a static string if git-cliff
+# is unavailable.
+NOTES=""
+if command -v git-cliff >/dev/null 2>&1; then
+    NOTES=$(git cliff --unreleased --tag "$TAG" 2>/dev/null || true)
+fi
+if [ -z "$NOTES" ]; then
+    NOTES="Signed (self-signed identity), un-notarized. See the README for install and first-launch steps."
+fi
+
 if [ "$DRY_RUN" = "1" ]; then
     echo "release: DRY RUN — skipping: gh release create $TAG"
+    echo "release: --- release notes ---"
+    echo "$NOTES"
+    echo "release: --- end notes ---"
 else
-    gh release create "$TAG" "$ZIP" --title "Claude Monitor $VERSION" \
-        --notes "Signed (self-signed identity), un-notarized. See the README for install and first-launch steps."
+    gh release create "$TAG" "$ZIP" --title "Claude Monitor $VERSION" --notes "$NOTES"
 fi
 
 # Cask sync: rewrite version/sha256 in the tap's cask. Dry runs edit a temp

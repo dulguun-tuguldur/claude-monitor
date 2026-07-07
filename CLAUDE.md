@@ -40,11 +40,18 @@ separate so the logic can be tested without touching AppKit/SwiftUI:
 only establishes the SPM package skeleton itself. Until then, use
 `swift build` / `swift test` / `swift run` directly.)
 
+## Releasing
+
+Commits follow [conventional commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `docs:`, `chore:`, …) — `make bump` derives the next version
+and changelog from them. See `docs/releasing.md` for the full flow.
+
 ## Docs
 
 - Implementation plan: `docs/superpowers/plans/2026-07-05-claude-monitor.md`
 - Design spec: `docs/superpowers/specs/2026-07-05-claude-monitor-design.md`
 - Spike results (Keychain / live usage API capture): `docs/superpowers/specs/spike-results.md`
+- Release process: `docs/releasing.md`
 
 See those documents for the why, the locked decisions, and the full
 multi-task plan this project is being built against.

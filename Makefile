@@ -1,6 +1,9 @@
 # ABOUTME: Developer entry points for building, testing, bundling, and running
 # ABOUTME: the Claude Monitor menu bar app.
-.PHONY: build test e2e app verify-app release run new-account test-new-account
+.PHONY: build test e2e app verify-app release run new-account test-new-account bump test-bump test-release test-cask
+
+# Homebrew tap checkout (sibling of this repo by default); holds the cask.
+CM_TAP_DIR ?= ../homebrew-tap
 
 build:
 	swift build
@@ -19,6 +22,18 @@ verify-app:
 
 release:
 	bash scripts/release.sh
+
+bump:
+	bash scripts/bump.sh
+
+test-bump:
+	bash scripts/bump-e2e.sh
+
+test-release:
+	bash scripts/release-e2e.sh
+
+test-cask:
+	brew style "$(CM_TAP_DIR)/Casks/claude-monitor.rb"
 
 run:
 	swift run ClaudeMonitor
