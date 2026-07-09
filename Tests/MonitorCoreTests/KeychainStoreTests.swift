@@ -65,3 +65,62 @@ final class KeychainStoreTests: XCTestCase {
         XCTAssertEqual(store.candidateServices(for: nonDefault), ["Claude Code-credentials-9b72ce99"])
     }
 }
+
+struct FakeSecurityCLIRunner: SecurityCLIRunning {
+    var response: (stdout: Data, exitCode: Int32)
+    var onRun: ((_ arguments: [String], _ stdin: Data?) -> Void)?
+
+    func run(arguments: [String], stdin: Data?) -> (stdout: Data, exitCode: Int32) {
+        onRun?(arguments, stdin)
+        return response
+    }
+}
+
+extension KeychainStoreTests {
+    func testReadDecodesPrintableCLIOutput() throws {
+        addTestItem(service: prefix + "kc", try validCredsJSON())
+        let json = try validCredsJSON()
+        let fake = FakeSecurityCLIRunner(response: (json + Data("\n".utf8), 0))
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        let creds = try store.readCredentials(for: account)
+        XCTAssertEqual(creds.accessToken, "sk-ant-oat01-FAKEFAKEFAKE")
+    }
+
+    func testReadDecodesHexCLIOutput() throws {
+        addTestItem(service: prefix + "kc", try validCredsJSON())
+        let json = try validCredsJSON()
+        let hex = json.map { String(format: "%02x", $0) }.joined()
+        let fake = FakeSecurityCLIRunner(response: (Data((hex + "\n").utf8), 0))
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        let creds = try store.readCredentials(for: account)
+        XCTAssertEqual(creds.accessToken, "sk-ant-oat01-FAKEFAKEFAKE")
+    }
+
+    func testReadMapsExitCode44ToNotFound() throws {
+        addTestItem(service: prefix + "kc", try validCredsJSON())
+        let fake = FakeSecurityCLIRunner(response: (Data(), 44))
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        XCTAssertThrowsError(try store.readCredentials(for: account)) { error in
+            XCTAssertEqual(error as? KeychainError, .notFound)
+        }
+    }
+
+    func testReadMapsOtherExitCodesToOSStatus() throws {
+        addTestItem(service: prefix + "kc", try validCredsJSON())
+        let fake = FakeSecurityCLIRunner(response: (Data(), 1))
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        XCTAssertThrowsError(try store.readCredentials(for: account)) { error in
+            XCTAssertEqual(error as? KeychainError, .osStatus(1))
+        }
+    }
+
+    func testReadInvokesFindGenericPasswordWithService() throws {
+        addTestItem(service: prefix + "kc", try validCredsJSON())
+        var capturedArgs: [String] = []
+        let fake = FakeSecurityCLIRunner(response: (try validCredsJSON() + Data("\n".utf8), 0),
+                                          onRun: { args, _ in capturedArgs = args })
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        _ = try store.readCredentials(for: account)
+        XCTAssertEqual(capturedArgs, ["find-generic-password", "-s", prefix + "kc", "-w"])
+    }
+}
