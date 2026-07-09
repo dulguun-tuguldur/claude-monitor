@@ -8,20 +8,27 @@ final class KeychainStoreTests: XCTestCase {
     let prefix = "cm-test-\(UUID().uuidString)-"
     var account: Account { Account(configDir: URL(fileURLWithPath: "/tmp/.claude-kc")) }
 
+    @discardableResult
+    func runSecurityCLI(_ arguments: [String]) -> Int32 {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = arguments
+        process.standardOutput = Pipe()
+        process.standardError = FileHandle.nullDevice
+        try! process.run()
+        process.waitUntilExit()
+        return process.terminationStatus
+    }
+
     func addTestItem(service: String, _ data: Data) {
-        let add: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: NSUserName(),
-            kSecValueData as String: data,
-        ]
-        XCTAssertEqual(SecItemAdd(add as CFDictionary, nil), errSecSuccess)
+        let secret = String(data: data, encoding: .utf8) ?? ""
+        let status = runSecurityCLI(["add-generic-password", "-U", "-s", service,
+                                     "-a", NSUserName(), "-w", secret])
+        XCTAssertEqual(status, 0)
     }
 
     override func tearDown() {
-        let del: [String: Any] = [kSecClass as String: kSecClassGenericPassword,
-                                  kSecAttrService as String: prefix + "kc"]
-        SecItemDelete(del as CFDictionary)
+        runSecurityCLI(["delete-generic-password", "-s", prefix + "kc"])
     }
 
     func validCredsJSON() throws -> Data {
