@@ -7,16 +7,53 @@ subprocesses instead of direct `SecItemCopyMatching`/`SecItemUpdate` calls, so
 "Always Allow" grants survive rebuilds and restarts permanently.
 
 **Architecture:** `KeychainStore` gains an injectable `SecurityCLIRunning` seam
-(default: a real `Process`-backed runner). Attribute-only lookups (existence,
+(default: a real `Process`-backed runner). Attribute-only lookups (existence +
 account name) stay on the direct `SecItemCopyMatching` API — they never touch
 the secret and never prompt. Secret reads go through
-`security find-generic-password -w`; secret writes go through
-`security -i` (interactive mode) fed via stdin, so the token never appears in
-argv/`ps`. The update-only invariant is preserved by resolving existence via
-the unchanged attribute-only query before ever invoking `-U`.
+`security find-generic-password -w`; secret writes go through `security -i`
+(interactive mode) fed via stdin so the token never appears in argv/`ps`. The
+update-only invariant is preserved by resolving existence via the unchanged
+attribute-only query before ever invoking `-U`.
 
 **Tech Stack:** Swift 5.9+ (SPM), Foundation `Process`/`Pipe`, Security.framework
 (unchanged for attribute-only queries), XCTest.
+
+---
+
+## Spike findings (verified 2026-07-09, on a disposable throwaway item)
+
+These are confirmed, not assumed — the code below depends on each:
+
+1. **`security find-generic-password -w`** prints the secret as printable text
+   when printable (our JSON always is — it starts with `{`), with a **single
+   trailing `\n`** that must be trimmed. It prints **hex** only when the blob is
+   non-printable; the hex fallback below is defensive and can never misfire on
+   valid Claude JSON (which starts with `{`, not a hex digit).
+2. **`security -i` fed `add-generic-password -U -s "…" -a "…" -w "<escaped JSON>"`
+   on stdin round-trips byte-identically**, including embedded `"` and `\`, using
+   the `quoted()` escaping (`\`→`\\`, `"`→`\"`, wrap in `"`). Secret stays off argv.
+3. **`add-generic-password -U` preserves the existing item's ACL and partition
+   list entirely** (all ACL entries byte-identical before/after). Rotating a
+   token therefore does **not** disturb Claude Code's own access — the monitor
+   stays a good citizen.
+4. **Exit codes:** `0` = success; `44` = item not found (`errSecItemNotFound`).
+   Other non-zero = failure.
+5. Writing is unrestricted anyway (the items' `encrypt` ACL entry has
+   `applications: <null>`), but routing writes through the CLI keeps the code
+   path uniform and guarantees no partition-check prompt on a rebuilt binary.
+
+## File structure
+
+Only one production file and its test change. Responsibilities:
+
+- `Sources/MonitorCore/KeychainStore.swift` — owns the `CredentialStore`
+  protocol, the internal `SecurityCLIRunning` seam + default `Process` runner,
+  service-name resolution (attribute-only, non-prompting), and the read/write
+  secret paths via the `security` CLI.
+- `Tests/MonitorCoreTests/KeychainStoreTests.swift` — unit tests against a fake
+  runner (no keychain needed for CLI behavior) plus real-keychain integration
+  tests whose fixtures are created through the `security` CLI so the subprocess
+  can read them without a prompt.
 
 ---
 
@@ -28,8 +65,8 @@ the unchanged attribute-only query before ever invoking `-U`.
 
 - [ ] **Step 1: Write the failing unit tests for the read path against a fake runner**
 
-Add to `Tests/MonitorCoreTests/KeychainStoreTests.swift` (new test methods,
-existing tests untouched for now):
+Add to `Tests/MonitorCoreTests/KeychainStoreTests.swift` (new methods; existing
+tests untouched for now):
 
 ```swift
 struct FakeSecurityCLIRunner: SecurityCLIRunning {
@@ -44,7 +81,7 @@ struct FakeSecurityCLIRunner: SecurityCLIRunning {
 
 extension KeychainStoreTests {
     func testReadDecodesPrintableCLIOutput() throws {
-        addTestItem(service: prefix + "kc", Data())
+        addTestItem(service: prefix + "kc", try validCredsJSON())
         let json = try validCredsJSON()
         let fake = FakeSecurityCLIRunner(response: (json + Data("\n".utf8), 0))
         let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
@@ -53,7 +90,7 @@ extension KeychainStoreTests {
     }
 
     func testReadDecodesHexCLIOutput() throws {
-        addTestItem(service: prefix + "kc", Data())
+        addTestItem(service: prefix + "kc", try validCredsJSON())
         let json = try validCredsJSON()
         let hex = json.map { String(format: "%02x", $0) }.joined()
         let fake = FakeSecurityCLIRunner(response: (Data((hex + "\n").utf8), 0))
@@ -63,7 +100,7 @@ extension KeychainStoreTests {
     }
 
     func testReadMapsExitCode44ToNotFound() throws {
-        addTestItem(service: prefix + "kc", Data())
+        addTestItem(service: prefix + "kc", try validCredsJSON())
         let fake = FakeSecurityCLIRunner(response: (Data(), 44))
         let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
         XCTAssertThrowsError(try store.readCredentials(for: account)) { error in
@@ -72,7 +109,7 @@ extension KeychainStoreTests {
     }
 
     func testReadMapsOtherExitCodesToOSStatus() throws {
-        addTestItem(service: prefix + "kc", Data())
+        addTestItem(service: prefix + "kc", try validCredsJSON())
         let fake = FakeSecurityCLIRunner(response: (Data(), 1))
         let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
         XCTAssertThrowsError(try store.readCredentials(for: account)) { error in
@@ -81,7 +118,7 @@ extension KeychainStoreTests {
     }
 
     func testReadInvokesFindGenericPasswordWithService() throws {
-        addTestItem(service: prefix + "kc", Data())
+        addTestItem(service: prefix + "kc", try validCredsJSON())
         var capturedArgs: [String] = []
         let fake = FakeSecurityCLIRunner(response: (try validCredsJSON() + Data("\n".utf8), 0),
                                           onRun: { args, _ in capturedArgs = args })
@@ -92,19 +129,24 @@ extension KeychainStoreTests {
 }
 ```
 
-`KeychainError` needs `Equatable` (already `Equatable` per its declaration —
-confirm, no change needed).
+Note: `addTestItem` still uses `SecItemAdd` at this point. That's fine for these
+tests — they read through the **fake** runner, and `resolveItem`'s
+attribute-only `SecItemCopyMatching` finds a `SecItemAdd`-created item without
+prompting. The real-runner fixture change comes in Task 3.
 
-- [ ] **Step 2: Run tests to verify they fail to compile (no `SecurityCLIRunning`/injectable init yet)**
+- [ ] **Step 2: Run tests to verify they fail to compile**
 
 Run: `swift test --filter KeychainStoreTests`
-Expected: build error — `cannot find type 'SecurityCLIRunning' in scope` and
-no matching `KeychainStore(servicePrefixOverride:cliRunner:)` initializer.
+Expected: build error — `cannot find type 'SecurityCLIRunning' in scope` and no
+matching `KeychainStore(servicePrefixOverride:cliRunner:)` initializer.
 
-- [ ] **Step 3: Implement `SecurityCLIRunning`, the real runner, and the read path**
+- [ ] **Step 3: Implement the seam, the default runner, resolution, and the read path**
 
-Replace the top of `Sources/MonitorCore/KeychainStore.swift` (imports through
-the `readCredentials` function) with:
+Replace the entire contents of `Sources/MonitorCore/KeychainStore.swift` from
+the top through the `readCredentials` function — i.e. everything **except** the
+existing `writeCredentials` function, which stays in place for now so the file
+still compiles (Task 2 replaces it). Concretely, replace lines from the file
+header down to the end of `readCredentials` with:
 
 ```swift
 // ABOUTME: Reads and update-only-writes Claude Code credential items in the macOS
@@ -113,7 +155,7 @@ import CryptoKit
 import Foundation
 import Security
 
-public enum KeychainError: Error, Equatable { case notFound, osStatus(Int32) }
+public enum KeychainError: Error, Equatable { case notFound, osStatus(OSStatus) }
 
 public protocol CredentialStore: Sendable {
     func readCredentials(for account: Account) throws -> Credentials
@@ -121,10 +163,11 @@ public protocol CredentialStore: Sendable {
 }
 
 /// Runs `/usr/bin/security` so credential access goes through the one process
-/// every Keychain item already trusts permanently (its ACL/partition never
-/// changes across our rebuilds), instead of the direct Security API, whose
-/// "Always Allow" grant is pinned to our per-build code identity and expires
-/// on every rebuild without a paid Developer ID team identifier.
+/// every Keychain item already trusts permanently: its ACL lists
+/// `com.apple.security` and its partition list carries `apple-tool:`, neither of
+/// which changes across our rebuilds. The direct Security API instead pins its
+/// "Always Allow" grant to our per-build code identity, which changes on every
+/// rebuild without a paid Developer ID team identifier, causing a re-prompt.
 protocol SecurityCLIRunning: Sendable {
     func run(arguments: [String], stdin: Data?) -> (stdout: Data, exitCode: Int32)
 }
@@ -136,8 +179,8 @@ struct ProcessSecurityCLIRunner: SecurityCLIRunning {
         process.arguments = arguments
         let outPipe = Pipe()
         process.standardOutput = outPipe
-        process.standardError = Pipe()
-        let inPipe = stdin.map { _ in Pipe() }
+        process.standardError = FileHandle.nullDevice
+        let inPipe: Pipe? = (stdin != nil) ? Pipe() : nil
         if let inPipe { process.standardInput = inPipe }
         do {
             try process.run()
@@ -183,7 +226,9 @@ public struct KeychainStore: CredentialStore {
         return ["Claude Code-credentials-\(suffix)"]
     }
 
-    /// Attribute-only lookup — never touches the secret, so it never prompts.
+    /// Attribute-only lookup of the item's service + account name. Returns
+    /// attributes, never the secret, so it never triggers a Keychain prompt.
+    /// The account name is needed so a write can target the exact existing item.
     func resolveItem(for account: Account) -> (service: String, account: String)? {
         for service in candidateServices(for: account) {
             var out: CFTypeRef?
@@ -202,22 +247,20 @@ public struct KeychainStore: CredentialStore {
         return nil
     }
 
-    func resolveService(for account: Account) -> String? {
-        resolveItem(for: account)?.service
-    }
-
     public func readCredentials(for account: Account) throws -> Credentials {
-        guard let service = resolveService(for: account) else { throw KeychainError.notFound }
-        let (stdout, exitCode) = cliRunner.run(arguments: ["find-generic-password", "-s", service, "-w"], stdin: nil)
+        guard let item = resolveItem(for: account) else { throw KeychainError.notFound }
+        let (stdout, exitCode) = cliRunner.run(
+            arguments: ["find-generic-password", "-s", item.service, "-w"], stdin: nil)
         guard exitCode == 0 else {
             throw exitCode == 44 ? KeychainError.notFound : KeychainError.osStatus(exitCode)
         }
         return try Credentials.parse(Self.decodeSecurityOutput(stdout))
     }
 
-    /// `security -w` prints the secret as text when printable, or as hex when it
-    /// isn't. Claude Code's credential JSON is printable, but this keeps us honest
-    /// if that ever changes.
+    /// `security -w` prints the secret as text when printable and as hex when it
+    /// isn't. Claude Code's credential JSON is printable (starts with `{`, never a
+    /// hex digit), so the hex branch is a defensive fallback that cannot misfire
+    /// on valid input.
     static func decodeSecurityOutput(_ raw: Data) -> Data {
         var trimmed = raw
         while let last = trimmed.last, last == 0x0a || last == 0x0d { trimmed.removeLast() }
@@ -240,25 +283,27 @@ public struct KeychainStore: CredentialStore {
         }
         return Data(bytes)
     }
-}
 ```
 
-(The `writeCredentials` function from the original file is intentionally
-omitted here — Task 2 replaces it. Leave the old direct-`SecItemUpdate`
-`writeCredentials` in place for now so the file still compiles between Task 1
-and Task 2.)
+Note the change from the original: `resolveService` is gone; `resolveItem`
+replaces it (grep confirmed `resolveService` had no callers outside this file).
+The exit code is `Int32`, which is exactly what `OSStatus` is a typealias for,
+so `KeychainError.osStatus(exitCode)` needs no cast and the enum is unchanged.
 
-- [ ] **Step 4: Run tests to verify the new ones pass and old ones still pass**
+- [ ] **Step 4: Run tests to verify the new read tests pass**
 
 Run: `swift test --filter KeychainStoreTests`
 Expected: `testReadDecodesPrintableCLIOutput`, `testReadDecodesHexCLIOutput`,
 `testReadMapsExitCode44ToNotFound`, `testReadMapsOtherExitCodesToOSStatus`,
-`testReadInvokesFindGenericPasswordWithService` all PASS. Pre-existing tests
-(`testReadViaServicePrefixSeam`, etc.) still PASS or FAIL only for reasons
-addressed in Task 3 (real-Keychain integration tests need their fixture setup
-updated to use the `security` CLI so the subprocess can read them) — if any of
-the four pre-existing tests hang waiting on a GUI prompt, kill the run, this
-is expected and fixed in Task 3; do not proceed past a hang.
+`testReadInvokesFindGenericPasswordWithService` all PASS.
+
+The pre-existing integration tests may temporarily fail to compile if the old
+`writeCredentials` referenced the now-removed `resolveService`. If so, minimally
+patch that one line in the old `writeCredentials` to `resolveItem(for: account)?.service`
+so the file compiles; Task 2 rewrites the whole function anyway. Do NOT change
+any other behavior. If a pre-existing **integration** test (real runner) hangs
+on a GUI prompt, kill the run — that is expected until Task 3 and is not a
+regression.
 
 - [ ] **Step 5: Commit**
 
@@ -290,13 +335,16 @@ extension KeychainStoreTests {
             capturedStdin = stdin
         })
         let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
-        try store.writeCredentials(try validCredsJSON(), for: account)
+        let secret = try validCredsJSON()
+        try store.writeCredentials(secret, for: account)
         XCTAssertEqual(capturedArgs, ["-i"])
         let stdinText = String(data: capturedStdin ?? Data(), encoding: .utf8) ?? ""
         XCTAssertTrue(stdinText.contains("add-generic-password"))
         XCTAssertTrue(stdinText.contains("-U"))
         XCTAssertTrue(stdinText.contains(prefix + "kc"))
+        // Secret must ride on stdin, never argv.
         XCTAssertFalse(capturedArgs.joined().contains("sk-ant-oat01"))
+        XCTAssertTrue(stdinText.contains("sk-ant-oat01"))
     }
 
     func testWriteThrowsNotFoundWithoutInvokingCLI() throws {
@@ -324,37 +372,40 @@ extension KeychainStoreTests {
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `swift test --filter KeychainStoreTests`
-Expected: `testWriteSendsCommandViaStdinNotArgv` FAILs (old implementation
-still uses `SecItemUpdate`, never touches `cliRunner`, so `capturedArgs` stays
-empty). `testWriteThrowsNotFoundWithoutInvokingCLI` and
-`testWriteMapsNonZeroExitToOSStatus` may pass or fail depending on the old
-code path — that's fine, Step 3 makes all three pass for the right reason.
+Expected: `testWriteSendsCommandViaStdinNotArgv` FAILs — the old `writeCredentials`
+uses `SecItemUpdate` and never touches `cliRunner`, so `capturedArgs`/`capturedStdin`
+stay empty. The other two may pass or fail incidentally; Step 3 makes all three
+pass for the right reason.
 
-- [ ] **Step 3: Replace `writeCredentials` to shell out via stdin**
+- [ ] **Step 3: Replace `writeCredentials` to shell out via `security -i` over stdin**
 
-Replace the old `writeCredentials` (the one still using `SecItemUpdate`) in
-`Sources/MonitorCore/KeychainStore.swift` with:
+Replace the entire existing `writeCredentials` function (the one still using
+`SecItemUpdate`) in `Sources/MonitorCore/KeychainStore.swift` with:
 
 ```swift
     /// Update-only by design: the monitor must never create credential items,
-    /// only rotate tokens inside items Claude Code already owns.
+    /// only rotate tokens inside items Claude Code already owns. `resolveItem`
+    /// gates on existence first so the `-U` below can never create a new item.
+    /// `add-generic-password -U` preserves the item's ACL/partition, so rotating
+    /// a token does not disturb Claude Code's own access.
     public func writeCredentials(_ data: Data, for account: Account) throws {
         guard let item = resolveItem(for: account) else { throw KeychainError.notFound }
         guard let secretText = String(data: data, encoding: .utf8) else {
             throw KeychainError.osStatus(errSecParam)
         }
-        let command = """
-        add-generic-password -U -s \(Self.quoted(item.service)) -a \(Self.quoted(item.account)) -w \(Self.quoted(secretText))
-
-        """
+        // The secret rides on stdin (interactive mode), never argv, so it is
+        // never visible in `ps`.
+        let command = "add-generic-password -U -s \(Self.quoted(item.service))"
+            + " -a \(Self.quoted(item.account)) -w \(Self.quoted(secretText))\n"
         let (_, exitCode) = cliRunner.run(arguments: ["-i"], stdin: Data(command.utf8))
         guard exitCode == 0 else {
             throw exitCode == 44 ? KeychainError.notFound : KeychainError.osStatus(exitCode)
         }
     }
 
-    /// Quotes a value for `security -i`'s line-oriented command parser, which
-    /// uses double-quote/backslash escaping like a shell word.
+    /// Quotes a value for `security -i`'s line parser, which uses double-quote /
+    /// backslash escaping like a shell word. Verified to round-trip JSON with
+    /// embedded quotes and backslashes.
     static func quoted(_ value: String) -> String {
         "\"" + value.replacingOccurrences(of: "\\", with: "\\\\")
                     .replacingOccurrences(of: "\"", with: "\\\"") + "\""
@@ -382,16 +433,16 @@ git commit -m "feat: write keychain credentials via security CLI over stdin"
 **Files:**
 - Modify: `Tests/MonitorCoreTests/KeychainStoreTests.swift`
 
-**Why this task exists:** The pre-existing tests create fixture items with
-`SecItemAdd` called directly from the XCTest process. A Keychain item's
-default ACL only trusts the process that created it. Now that
-`readCredentials`/`writeCredentials` access secrets via the `/usr/bin/security`
-subprocess — a different signed binary than the test process — that
-subprocess has no standing grant on test-created items and macOS will show a
-blocking password prompt during `swift test`. Creating (and deleting) the
-fixture through the `security` CLI itself makes `/usr/bin/security` the
-creator, which is trusted by default — matching how real Claude Code items
-already work.
+**Why this task exists:** The pre-existing integration tests
+(`testReadViaServicePrefixSeam`, `testWriteUpdatesExistingItem`) use the **real**
+runner (default init), so they invoke the actual `security` binary against the
+fixture item. A Keychain item's default ACL trusts only the process that created
+it. Fixtures are currently created with `SecItemAdd` from the XCTest process, so
+the `security` subprocess is **not** on their decrypt ACL and macOS shows a
+blocking GUI prompt → the test hangs. Creating the fixture through the `security`
+CLI instead makes `/usr/bin/security` the item's owner (its decrypt ACL then
+lists `com.apple.security`, and reads via the CLI succeed silently — verified in
+the 2026-07-09 spike), matching how real Claude Code items already work.
 
 - [ ] **Step 1: Replace `addTestItem` and `tearDown` to use the `security` CLI**
 
@@ -418,12 +469,13 @@ In `Tests/MonitorCoreTests/KeychainStoreTests.swift`, replace:
 with:
 
 ```swift
+    @discardableResult
     func runSecurityCLI(_ arguments: [String]) -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = arguments
         process.standardOutput = Pipe()
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
         try! process.run()
         process.waitUntilExit()
         return process.terminationStatus
@@ -432,28 +484,28 @@ with:
     func addTestItem(service: String, _ data: Data) {
         let secret = String(data: data, encoding: .utf8) ?? ""
         let status = runSecurityCLI(["add-generic-password", "-U", "-s", service,
-                                      "-a", NSUserName(), "-w", secret])
+                                     "-a", NSUserName(), "-w", secret])
         XCTAssertEqual(status, 0)
     }
 
     override func tearDown() {
-        _ = runSecurityCLI(["delete-generic-password", "-s", prefix + "kc"])
+        runSecurityCLI(["delete-generic-password", "-s", prefix + "kc"])
     }
 ```
 
-- [ ] **Step 2: Run the full pre-existing test suite to verify no prompts and all pass**
+- [ ] **Step 2: Run the full KeychainStore suite to verify no prompts and all pass**
 
 Run: `swift test --filter KeychainStoreTests`
-Expected: all tests PASS with no interactive prompt and no hang, including
+Expected: all tests PASS with no interactive prompt and no hang — the unit tests
+from Tasks 1–2 (fake runner), plus the integration tests
 `testReadViaServicePrefixSeam`, `testWriteUpdatesExistingItem`,
-`testWriteNeverCreatesItems`, `testReadMissingThrowsNotFound`,
-`testCandidateServicesUsesSHA256PathPrefixForNonDefaultAccount`, and all tests
-added in Tasks 1–2.
+`testWriteNeverCreatesItems`, `testReadMissingThrowsNotFound`, and
+`testCandidateServicesUsesSHA256PathPrefixForNonDefaultAccount`.
 
-If a prompt still appears: stop and re-check the ACL on the offending test
-item with `security dump-keychain -a ~/Library/Keychains/login.keychain-db |
-grep -A20 '"<prefix>kc"'` before changing anything else — do not disable or
-skip the test.
+If a prompt still appears: STOP. Do not skip or disable the test. Inspect the
+offending item's ACL first — `security dump-keychain -a
+~/Library/Keychains/login.keychain-db` and search for the test service name —
+to see which app the decrypt ACL trusts, then reconcile before continuing.
 
 - [ ] **Step 3: Commit**
 
@@ -468,56 +520,60 @@ git commit -m "test: create keychain fixtures via security CLI so subprocess rea
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run the full test suite**
+- [ ] **Step 1: Run the full unit/integration suite**
 
 Run: `swift test`
-Expected: all tests PASS (unit + integration), no hangs, no prompts.
+Expected: all tests PASS, no hangs, no prompts.
 
 - [ ] **Step 2: Run the e2e suite**
 
 Run: `make e2e`
-Expected: exits 0. (E2E fixtures already go through the `security` CLI per
-the existing spike, so this should be unaffected by the change.)
+Expected: exits 0. (E2E fixtures already go through the `security` CLI per the
+existing spike setup, so this path is unaffected by the change.)
 
-- [ ] **Step 3: Rebuild and reinstall the app, then manually verify silence across a rebuild**
+- [ ] **Step 3: Rebuild, reinstall, and manually verify silence across a rebuild**
 
 ```bash
 make app
 ```
 
-Then manually, outside of any test harness: quit the running
-`Claude Monitor.app`, relaunch it, and confirm no Keychain dialog appears for
-any of the six accounts. Rebuild with `make app` again (changing the binary's
-cdhash) and relaunch once more — confirm still no dialog. This is the
-regression `make e2e`/unit tests cannot observe (they don't drive the real
-GUI dialog path), so it must be checked by hand once before calling the
-fix done.
+Then, outside any test harness: quit the running `Claude Monitor.app`, relaunch
+it, and confirm no Keychain dialog appears for any of the six accounts. Rebuild
+with `make app` again (this changes the binary's cdhash — the exact condition
+that used to re-trigger prompts) and relaunch once more; confirm still no dialog.
+This is the regression neither unit nor e2e tests can observe, because they do
+not drive the real GUI dialog path — so it must be checked by hand once before
+declaring the fix done.
 
-Expected: zero dialogs on both launches, for all six accounts, except the
-already-documented one-time prompt on `Claude Code-credentials-ce2d9f0a`
-(see spec, "One-time user action") if it hasn't already been granted.
+Expected: zero dialogs on both launches, for all six accounts — except the
+already-documented one-time prompt on `Claude Code-credentials-ce2d9f0a` (see
+spec, "One-time user action") if that grant has not yet been made. "Always Allow"
+there binds to `/usr/bin/security` and is then permanent.
 
-- [ ] **Step 4: Update the design spec status (optional but recommended)**
+- [ ] **Step 4: Verification checkpoint**
 
-No file changes required; this step is a checkpoint to confirm with Mr. D
-that the manual verification in Step 3 passed before considering the branch
-done.
+No file changes. Confirm with Mr. D that Step 3's manual check passed (zero
+dialogs across a rebuild) before the branch is considered done, then hand off to
+the finishing-a-development-branch skill.
 
 ---
 
 ## Self-Review Notes
 
-- **Spec coverage:** read path (Task 1), write path (Task 2), update-only
-  invariant preserved via `resolveItem` (Task 2), stdin-not-argv (Task 2 test
-  `testWriteSendsCommandViaStdinNotArgv`), exit-code mapping (Tasks 1–2),
-  hex-decode fallback (Task 1), untouched `CM_KEYCHAIN_SERVICE_PREFIX` seam
-  and E2E fixtures (Task 4), one-time prompt caveat (Task 4 manual step) — all
-  covered.
+- **Spec coverage:** read path via CLI (Task 1); write path via CLI over stdin
+  (Task 2); update-only invariant preserved via `resolveItem` existence gate
+  (Task 2); secret off argv (Task 2 test `testWriteSendsCommandViaStdinNotArgv`);
+  exit-code mapping incl. 44→notFound (Tasks 1–2); trailing-newline trim +
+  hex-decode fallback (Task 1); untouched `CM_KEYCHAIN_SERVICE_PREFIX` seam and
+  E2E path (Task 4); one-time `-ce2d9f0a` prompt caveat (Task 4 manual step);
+  ACL-preserving write / good-citizen property (spike finding #3, relied on in
+  Task 2's doc comment) — all covered.
 - **Type consistency:** `SecurityCLIRunning.run(arguments:stdin:) ->
-  (stdout: Data, exitCode: Int32)` is the same signature used by
-  `ProcessSecurityCLIRunner`, `FakeSecurityCLIRunner`, and both call sites in
-  `KeychainStore`. `KeychainError.osStatus` takes `Int32` throughout (matches
-  `Process.terminationStatus`'s type) — note this is a signature change from
-  the original `osStatus(OSStatus)` (`OSStatus` is itself `Int32` under the
-  hood, so no call-site breakage, but flagging since callers pattern-matching
-  on `.osStatus` don't care about the underlying type name).
+  (stdout: Data, exitCode: Int32)` matches across `ProcessSecurityCLIRunner`,
+  `FakeSecurityCLIRunner`, and both `KeychainStore` call sites.
+  `Process.terminationStatus` is `Int32`; `OSStatus` is a typealias for `Int32`;
+  so `KeychainError.osStatus(exitCode)` compiles with the **unchanged** enum
+  `case osStatus(OSStatus)` and no cast — the enum is not modified.
+- **No dangling references:** `resolveService` is fully removed and every caller
+  now uses `resolveItem`; `candidateServices` (the only externally tested helper)
+  is unchanged.
