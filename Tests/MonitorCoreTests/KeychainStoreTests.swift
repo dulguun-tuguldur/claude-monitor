@@ -123,4 +123,45 @@ extension KeychainStoreTests {
         _ = try store.readCredentials(for: account)
         XCTAssertEqual(capturedArgs, ["find-generic-password", "-s", prefix + "kc", "-w"])
     }
+
+    func testWriteSendsCommandViaStdinNotArgv() throws {
+        addTestItem(service: prefix + "kc", try validCredsJSON())
+        var capturedArgs: [String] = []
+        var capturedStdin: Data?
+        let fake = FakeSecurityCLIRunner(response: (Data(), 0), onRun: { args, stdin in
+            capturedArgs = args
+            capturedStdin = stdin
+        })
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        let secret = try validCredsJSON()
+        try store.writeCredentials(secret, for: account)
+        XCTAssertEqual(capturedArgs, ["-i"])
+        let stdinText = String(data: capturedStdin ?? Data(), encoding: .utf8) ?? ""
+        XCTAssertTrue(stdinText.contains("add-generic-password"))
+        XCTAssertTrue(stdinText.contains("-U"))
+        XCTAssertTrue(stdinText.contains(prefix + "kc"))
+        // Secret must ride on stdin, never argv.
+        XCTAssertFalse(capturedArgs.joined().contains("sk-ant-oat01"))
+        XCTAssertTrue(stdinText.contains("sk-ant-oat01"))
+    }
+
+    func testWriteThrowsNotFoundWithoutInvokingCLI() throws {
+        // no item added
+        var invoked = false
+        let fake = FakeSecurityCLIRunner(response: (Data(), 0), onRun: { _, _ in invoked = true })
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        XCTAssertThrowsError(try store.writeCredentials(try validCredsJSON(), for: account)) { error in
+            XCTAssertEqual(error as? KeychainError, .notFound)
+        }
+        XCTAssertFalse(invoked)
+    }
+
+    func testWriteMapsNonZeroExitToOSStatus() throws {
+        addTestItem(service: prefix + "kc", try validCredsJSON())
+        let fake = FakeSecurityCLIRunner(response: (Data(), 1))
+        let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
+        XCTAssertThrowsError(try store.writeCredentials(try validCredsJSON(), for: account)) { error in
+            XCTAssertEqual(error as? KeychainError, .osStatus(1))
+        }
+    }
 }

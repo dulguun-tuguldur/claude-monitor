@@ -134,17 +134,30 @@ public struct KeychainStore: CredentialStore {
     }
 
     /// Update-only by design: the monitor must never create credential items,
-    /// only rotate tokens inside items Claude Code already owns.
+    /// only rotate tokens inside items Claude Code already owns. `resolveItem`
+    /// gates on existence first so the `-U` below can never create a new item.
+    /// `add-generic-password -U` preserves the item's ACL/partition, so rotating
+    /// a token does not disturb Claude Code's own access.
     public func writeCredentials(_ data: Data, for account: Account) throws {
-        guard let service = resolveItem(for: account)?.service else { throw KeychainError.notFound }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-        ]
-        let status = SecItemUpdate(query as CFDictionary,
-                                   [kSecValueData as String: data] as CFDictionary)
-        guard status == errSecSuccess else {
-            throw status == errSecItemNotFound ? KeychainError.notFound : KeychainError.osStatus(status)
+        guard let item = resolveItem(for: account) else { throw KeychainError.notFound }
+        guard let secretText = String(data: data, encoding: .utf8) else {
+            throw KeychainError.osStatus(errSecParam)
         }
+        // The secret rides on stdin (interactive mode), never argv, so it is
+        // never visible in `ps`.
+        let command = "add-generic-password -U -s \(Self.quoted(item.service))"
+            + " -a \(Self.quoted(item.account)) -w \(Self.quoted(secretText))\n"
+        let (_, exitCode) = cliRunner.run(arguments: ["-i"], stdin: Data(command.utf8))
+        guard exitCode == 0 else {
+            throw exitCode == 44 ? KeychainError.notFound : KeychainError.osStatus(exitCode)
+        }
+    }
+
+    /// Quotes a value for `security -i`'s line parser, which uses double-quote /
+    /// backslash escaping like a shell word. Verified to round-trip JSON with
+    /// embedded quotes and backslashes.
+    static func quoted(_ value: String) -> String {
+        "\"" + value.replacingOccurrences(of: "\\", with: "\\\\")
+                    .replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 }
