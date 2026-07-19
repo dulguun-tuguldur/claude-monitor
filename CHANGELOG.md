@@ -2,6 +2,22 @@
 
 All notable changes to Claude Monitor are documented in this file.
 It is generated from conventional commit messages by git-cliff.
+## [1.1.0] - 2026-07-19
+
+### Features
+
+- Read keychain credentials via security CLI subprocess
+- Write keychain credentials via security CLI over stdin
+
+### Documentation
+
+- Design spec for silent keychain access via security CLI
+- Implementation plan for silent keychain access via security CLI
+- Rewrite silent-keychain-access plan with spike-verified CLI behavior
+
+### Testing
+
+- Create keychain fixtures via security CLI so subprocess reads don't prompt
 ## [1.0.1] - 2026-07-07
 
 ### Bug Fixes
