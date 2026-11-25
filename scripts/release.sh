@@ -18,9 +18,14 @@ ZIP="dist/ClaudeMonitor-$VERSION.zip"
 
 fail() { echo "release: FAIL: $*" >&2; exit 1; }
 
-# Preconditions: releases are cut from a clean tree, signed with the pinned
-# identity (never ship ad-hoc), onto a tag that doesn't exist yet.
+# Preconditions: releases are cut from a clean, pushed tree, signed with the
+# pinned identity (never ship ad-hoc), onto a tag that doesn't exist yet. HEAD
+# must be on the upstream branch because GitHub creates the tag on that commit.
 if [ -n "$(git status --porcelain)" ]; then fail "working tree not clean"; fi
+if ! git merge-base --is-ancestor HEAD '@{upstream}' 2>/dev/null; then
+    fail "HEAD is not pushed to its upstream branch (run git push first)"
+fi
+TARGET_SHA=$(git rev-parse HEAD)
 if ! security find-identity -v -p codesigning 2>/dev/null | grep -q '"claude-monitor-signing"'; then
     fail "claude-monitor-signing identity not found (see docs/signing.md)"
 fi
@@ -38,7 +43,7 @@ echo "release: sha256  $SHA256"
 
 # Release notes come from the changelog section for this version. --unreleased
 # --tag names the pending version correctly even though the tag does not exist
-# yet (gh release create makes it). Fall back to a static string if git-cliff
+# yet (gh release create makes it, on --target). Fall back to a static string if git-cliff
 # is unavailable.
 NOTES=""
 if command -v git-cliff >/dev/null 2>&1; then
@@ -49,12 +54,12 @@ if [ -z "$NOTES" ]; then
 fi
 
 if [ "$DRY_RUN" = "1" ]; then
-    echo "release: DRY RUN — skipping: gh release create $TAG"
+    echo "release: DRY RUN — skipping: gh release create $TAG --target $TARGET_SHA"
     echo "release: --- release notes ---"
     echo "$NOTES"
     echo "release: --- end notes ---"
 else
-    gh release create "$TAG" "$ZIP" --title "Claude Monitor $VERSION" --notes "$NOTES"
+    gh release create "$TAG" "$ZIP" --target "$TARGET_SHA" --title "Claude Monitor $VERSION" --notes "$NOTES"
 fi
 
 # Cask sync: rewrite version/sha256 in the tap's cask. Dry runs edit a temp

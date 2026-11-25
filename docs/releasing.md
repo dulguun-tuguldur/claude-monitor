@@ -30,10 +30,15 @@ changelog.
 ## Normal release
 
 ```sh
+git fetch --tags # bump derives the version from tags; a missing tag re-derives an old one
 make bump        # derive vX.Y.Z, rewrite VERSION + CHANGELOG.md, commit
 git push         # push the release commit
 make release     # tag, build, verify, zip, publish, sync the cask
 ```
+
+`make release` refuses to run until HEAD is on its upstream branch, and passes
+`--target <HEAD sha>` to `gh release create` so the tag lands on the release
+commit rather than on whatever the remote default branch points at.
 
 Then review and push the tap:
 
