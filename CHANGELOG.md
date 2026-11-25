@@ -2,6 +2,15 @@
 
 All notable changes to Claude Monitor are documented in this file.
 It is generated from conventional commit messages by git-cliff.
+## [1.2.0] - 2026-11-25
+
+### Features
+
+- Track Fable weekly window in third column
+
+### Bug Fixes
+
+- Tag releases on the release commit and refuse unpushed HEAD
 ## [1.1.0] - 2026-07-19
 
 ### Features
