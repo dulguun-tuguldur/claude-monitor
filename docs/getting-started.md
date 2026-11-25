@@ -1,7 +1,7 @@
 # Getting Started with Claude Monitor
 
 Claude Monitor is a macOS menu bar app that shows Claude Code usage —
-session, week, and week-Sonnet percentages — for every account you run via
+session, week, and week-Fable percentages — for every account you run via
 `CLAUDE_CONFIG_DIR`, all in one glance.
 
 Getting set up is three steps: **install the app**, **let it read your
@@ -203,13 +203,13 @@ its usage on the next poll — no restart needed.
 
 ## 4. Reading the display
 
-Each account's bar is three numbers, `session · week · week-Sonnet`:
+Each account's bar is three numbers, `session · week · week-Fable`:
 
 | Segment | Meaning |
 | --- | --- |
 | **session** | 5-hour rolling window usage % |
 | **week** | 7-day window usage % (all models) |
-| **week-Sonnet** | 7-day Sonnet window usage % |
+| **week-Fable** | 7-day Fable window usage % |
 
 `–` means that window doesn't apply to the account. Numbers turn **amber at
 ≥70%** and **red at ≥90%**.

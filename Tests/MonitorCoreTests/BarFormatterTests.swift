@@ -4,16 +4,26 @@ import XCTest
 @testable import MonitorCore
 
 final class BarFormatterTests: XCTestCase {
-    func snapshot(_ s: Double?, _ w: Double?, _ so: Double?) -> UsageSnapshot {
+    func snapshot(_ s: Double?, _ w: Double?, _ f: Double?) -> UsageSnapshot {
         UsageSnapshot(
             session: s.map { WindowUsage(utilization: $0, resetsAt: nil) },
             weekAll: w.map { WindowUsage(utilization: $0, resetsAt: nil) },
-            weekSonnet: so.map { WindowUsage(utilization: $0, resetsAt: nil) },
-            weekOpus: nil, fetchedAt: Date())
+            weekSonnet: nil, weekOpus: nil,
+            weekFable: f.map { WindowUsage(utilization: $0, resetsAt: nil) },
+            fetchedAt: Date())
     }
 
     func testPlainTextTriple() {
         XCTAssertEqual(BarFormatter.plainText(for: snapshot(42.2, 18.0, 9.4)), "42·18·9")
+    }
+
+    func testThirdColumnIsFableNotSonnet() {
+        let snap = UsageSnapshot(
+            session: WindowUsage(utilization: 42, resetsAt: nil),
+            weekAll: WindowUsage(utilization: 18, resetsAt: nil),
+            weekSonnet: WindowUsage(utilization: 99, resetsAt: nil), weekOpus: nil,
+            weekFable: WindowUsage(utilization: 27.6, resetsAt: nil), fetchedAt: Date())
+        XCTAssertEqual(BarFormatter.plainText(for: snap), "42·18·28")
     }
 
     func testMissingWindowsRenderDash() {

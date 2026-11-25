@@ -139,6 +139,7 @@ final class StatusItemController: NSObject {
         line("Week (all)", snapshot.weekAll)
         line("Week (Sonnet)", snapshot.weekSonnet)
         line("Week (Opus)", snapshot.weekOpus)
+        line("Week (Fable)", snapshot.weekFable)
         return lines.joined(separator: "\n")
     }
 

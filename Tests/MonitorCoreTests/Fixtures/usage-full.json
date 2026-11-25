@@ -3,5 +3,15 @@
   "seven_day":       { "utilization": 18.0, "resets_at": "2026-07-08T00:00:00Z" },
   "seven_day_sonnet":{ "utilization": 9.4,  "resets_at": "2026-07-08T00:00:00Z" },
   "seven_day_opus":  { "utilization": 5.0,  "resets_at": "2026-07-08T00:00:00Z" },
+  "limits": [
+    { "kind": "session", "group": "session", "percent": 42.2, "resets_at": "2026-07-05T16:00:00Z",
+      "scope": null, "severity": "normal", "is_active": true },
+    { "kind": "weekly_all", "group": "weekly", "percent": 18.0, "resets_at": "2026-07-08T00:00:00Z",
+      "scope": null, "severity": "normal", "is_active": false },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 3.0, "resets_at": "2026-07-08T00:00:00Z",
+      "scope": { "model": { "display_name": "Opus" } }, "severity": "normal", "is_active": false },
+    { "kind": "weekly_scoped", "group": "weekly", "percent": 27.6, "resets_at": "2026-07-08T00:00:00Z",
+      "scope": { "model": { "display_name": "Fable" } }, "severity": "normal", "is_active": false }
+  ],
   "some_future_field": { "ignored": true }
 }

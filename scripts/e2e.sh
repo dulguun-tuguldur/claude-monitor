@@ -38,7 +38,8 @@ class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         body = json.dumps({"five_hour": {"utilization": 42.2, "resets_at": "2026-07-05T16:00:00Z"},
                            "seven_day": {"utilization": 18.0, "resets_at": "2026-07-08T00:00:00Z"},
-                           "seven_day_sonnet": {"utilization": 9.4, "resets_at": "2026-07-08T00:00:00Z"}}).encode()
+                           "limits": [{"kind": "weekly_scoped", "percent": 9.4, "resets_at": "2026-07-08T00:00:00Z",
+                                       "scope": {"model": {"display_name": "Fable"}}}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))

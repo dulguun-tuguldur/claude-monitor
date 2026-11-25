@@ -29,7 +29,7 @@ final class PollerTests: XCTestCase {
     func testHappyPath() async throws {
         store.creds[acct.id] = try fixtureCreds("credentials-valid")
         MockURLProtocol.handler = MockURLProtocol.respond(status: 200,
-            json: #"{"five_hour":{"utilization":42.0},"seven_day":{"utilization":18.0},"seven_day_sonnet":{"utilization":9.0}}"#)
+            json: #"{"five_hour":{"utilization":42.0},"seven_day":{"utilization":18.0},"limits":[{"kind":"weekly_scoped","percent":9.0,"scope":{"model":{"display_name":"Fable"}}}]}"#)
         let poller = makePoller()
         await poller.pollAll()
         guard case .ok(let snap) = poller.states().first?.status else { return XCTFail() }

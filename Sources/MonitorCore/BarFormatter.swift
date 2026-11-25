@@ -21,9 +21,9 @@ public enum BarFormatter {
         return .normal
     }
 
-    /// Fixed order: session · week(all) · week(sonnet). Absent window → "–".
+    /// Fixed order: session · week(all) · week(Fable). Absent window → "–".
     public static func segments(for snapshot: UsageSnapshot?) -> [BarSegment] {
-        let windows = [snapshot?.session, snapshot?.weekAll, snapshot?.weekSonnet]
+        let windows = [snapshot?.session, snapshot?.weekAll, snapshot?.weekFable]
         var out: [BarSegment] = []
         for (i, w) in windows.enumerated() {
             if i > 0 { out.append(BarSegment(text: "·", level: .normal)) }

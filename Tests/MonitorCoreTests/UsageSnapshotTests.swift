@@ -1,5 +1,5 @@
 // ABOUTME: Tests lenient decoding of the OAuth usage endpoint response:
-// ABOUTME: full plans, plans without per-model windows, and garbage input.
+// ABOUTME: full plans, plans without per-model windows, Fable limits rows, and garbage input.
 import XCTest
 @testable import MonitorCore
 
@@ -20,6 +20,38 @@ final class UsageSnapshotTests: XCTestCase {
     func testParseWithoutSonnet() throws {
         let s = try UsageSnapshot.parse(fixture("usage-no-sonnet"))
         XCTAssertNil(s.weekSonnet)
+        XCTAssertNil(s.weekFable)
+        XCTAssertEqual(s.weekAll?.utilization, 18.0)
+    }
+
+    func testParseFableFromLimitsRows() throws {
+        let s = try UsageSnapshot.parse(fixture("usage-full"))
+        XCTAssertEqual(s.weekFable?.utilization, 27.6)
+        XCTAssertEqual(s.weekFable?.resetsAt, UsageSnapshot.parseISO("2026-07-08T00:00:00Z"))
+    }
+
+    func testFableMatchIgnoresCaseAndOtherKinds() throws {
+        let json = #"""
+        {"limits":[
+          {"kind":"weekly_all","percent":50.0,"resets_at":null,"scope":{"model":{"display_name":"Fable"}}},
+          {"kind":"weekly_scoped","percent":7.0,"resets_at":null,"scope":{"model":{"display_name":"fable"}}}
+        ]}
+        """#
+        let s = try UsageSnapshot.parse(Data(json.utf8))
+        XCTAssertEqual(s.weekFable?.utilization, 7.0)
+        XCTAssertNil(s.weekFable?.resetsAt)
+    }
+
+    func testFableEpochSecondsResetsAt() throws {
+        let json = #"{"limits":[{"kind":"weekly_scoped","percent":7.0,"resets_at":1783468800,"scope":{"model":{"display_name":"Fable"}}}]}"#
+        let s = try UsageSnapshot.parse(Data(json.utf8))
+        XCTAssertEqual(s.weekFable?.resetsAt, Date(timeIntervalSince1970: 1783468800))
+    }
+
+    func testMalformedLimitsRowsAreIgnored() throws {
+        let json = #"{"seven_day":{"utilization":18.0},"limits":[null,"x",{"kind":"weekly_scoped"},{"kind":"weekly_scoped","percent":"9","scope":{"model":{"display_name":"Fable"}}}]}"#
+        let s = try UsageSnapshot.parse(Data(json.utf8))
+        XCTAssertNil(s.weekFable)
         XCTAssertEqual(s.weekAll?.utilization, 18.0)
     }
 
