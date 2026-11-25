@@ -5,8 +5,7 @@ week, and week-Fable percentages — for every account you run via
 `CLAUDE_CONFIG_DIR` aliases, all in one glance. No more running `/usage` in
 each account's Claude Code session by hand.
 
-<!-- screenshot: menu bar showing "✳ 42·18·9" and the account dropdown with
-     per-account rows (session / week / week-Fable) -->
+![Claude Monitor menu bar item and account dropdown](docs/images/menu.png)
 
 ## Install
 
