@@ -73,12 +73,18 @@ final class KeychainStoreTests: XCTestCase {
     }
 }
 
-struct FakeSecurityCLIRunner: SecurityCLIRunning {
-    var response: (stdout: Data, exitCode: Int32)
-    var onRun: ((_ arguments: [String], _ stdin: Data?) -> Void)?
+/// Canned `security` CLI responses plus a log of every invocation, so tests can
+/// assert on the arguments and stdin the store sent.
+final class FakeSecurityCLIRunner: SecurityCLIRunning, @unchecked Sendable {
+    let response: (stdout: Data, exitCode: Int32)
+    var runs: [(arguments: [String], stdin: Data?)] = []
+
+    init(response: (stdout: Data, exitCode: Int32)) {
+        self.response = response
+    }
 
     func run(arguments: [String], stdin: Data?) -> (stdout: Data, exitCode: Int32) {
-        onRun?(arguments, stdin)
+        runs.append((arguments, stdin))
         return response
     }
 }
@@ -123,25 +129,20 @@ extension KeychainStoreTests {
 
     func testReadInvokesFindGenericPasswordWithService() throws {
         addTestItem(service: prefix + "kc", try validCredsJSON())
-        var capturedArgs: [String] = []
-        let fake = FakeSecurityCLIRunner(response: (try validCredsJSON() + Data("\n".utf8), 0),
-                                          onRun: { args, _ in capturedArgs = args })
+        let fake = FakeSecurityCLIRunner(response: (try validCredsJSON() + Data("\n".utf8), 0))
         let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
         _ = try store.readCredentials(for: account)
-        XCTAssertEqual(capturedArgs, ["find-generic-password", "-s", prefix + "kc", "-w"])
+        XCTAssertEqual(fake.runs.last?.arguments, ["find-generic-password", "-s", prefix + "kc", "-w"])
     }
 
     func testWriteSendsCommandViaStdinNotArgv() throws {
         addTestItem(service: prefix + "kc", try validCredsJSON())
-        var capturedArgs: [String] = []
-        var capturedStdin: Data?
-        let fake = FakeSecurityCLIRunner(response: (Data(), 0), onRun: { args, stdin in
-            capturedArgs = args
-            capturedStdin = stdin
-        })
+        let fake = FakeSecurityCLIRunner(response: (Data(), 0))
         let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
         let secret = try validCredsJSON()
         try store.writeCredentials(secret, for: account)
+        let capturedArgs = fake.runs.last?.arguments ?? []
+        let capturedStdin = fake.runs.last?.stdin
         XCTAssertEqual(capturedArgs, ["-i"])
         let stdinText = String(data: capturedStdin ?? Data(), encoding: .utf8) ?? ""
         XCTAssertTrue(stdinText.contains("add-generic-password"))
@@ -154,13 +155,12 @@ extension KeychainStoreTests {
 
     func testWriteThrowsNotFoundWithoutInvokingCLI() throws {
         // no item added
-        var invoked = false
-        let fake = FakeSecurityCLIRunner(response: (Data(), 0), onRun: { _, _ in invoked = true })
+        let fake = FakeSecurityCLIRunner(response: (Data(), 0))
         let store = KeychainStore(servicePrefixOverride: prefix, cliRunner: fake)
         XCTAssertThrowsError(try store.writeCredentials(try validCredsJSON(), for: account)) { error in
             XCTAssertEqual(error as? KeychainError, .notFound)
         }
-        XCTAssertFalse(invoked)
+        XCTAssertTrue(fake.runs.isEmpty)
     }
 
     func testWriteMapsNonZeroExitToOSStatus() throws {
