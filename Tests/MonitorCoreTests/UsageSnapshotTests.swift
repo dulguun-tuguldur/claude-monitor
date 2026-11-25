@@ -30,6 +30,19 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(s.weekFable?.resetsAt, UsageSnapshot.parseISO("2026-07-08T00:00:00Z"))
     }
 
+    /// Captured live response: integer `percent`, microsecond `resets_at` with a
+    /// `+00:00` offset, and dozens of null top-level windows.
+    func testParseLiveResponseWithFableRow() throws {
+        let s = try UsageSnapshot.parse(fixture("usage-live-fable"))
+        XCTAssertEqual(s.session?.utilization, 8.0)
+        XCTAssertEqual(s.weekAll?.utilization, 11.0)
+        XCTAssertNil(s.weekSonnet)
+        XCTAssertEqual(s.weekFable?.utilization, 5.0)
+        XCTAssertEqual(s.weekFable?.resetsAt?.timeIntervalSince1970 ?? 0,
+                       UsageSnapshot.parseISO("2026-11-29T07:00:00Z")!.timeIntervalSince1970, accuracy: 1)
+        XCTAssertEqual(BarFormatter.plainText(for: s), "8·11·5")
+    }
+
     func testFableMatchIgnoresCaseAndOtherKinds() throws {
         let json = #"""
         {"limits":[
