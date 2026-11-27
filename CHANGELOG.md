@@ -2,6 +2,20 @@
 
 All notable changes to Claude Monitor are documented in this file.
 It is generated from conventional commit messages by git-cliff.
+## [1.3.0] - 2026-11-27
+
+### Features
+
+- Add setting to hide session reset time in menu bar
+
+### Documentation
+
+- Add menu bar screenshot to README
+
+### Testing
+
+- Cover captured live usage response with a Fable limits row
+- Make FakeSecurityCLIRunner a recording class to fix Sendable warning
 ## [1.2.0] - 2026-11-25
 
 ### Features
