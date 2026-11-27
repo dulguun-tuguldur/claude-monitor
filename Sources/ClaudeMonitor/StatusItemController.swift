@@ -19,7 +19,7 @@ final class StatusItemController: NSObject {
     }
 
     func start() {
-        statusItem.button?.image = NSImage(systemSymbolName: "sparkle", accessibilityDescription: "Claude usage")
+        setIcon(.normal)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.menu = NSMenu()
         poller.onUpdate = { [weak self] states in
@@ -51,39 +51,44 @@ final class StatusItemController: NSObject {
 
     // MARK: bar rendering
 
+    /// Only opaque colors here: translucent grays like secondaryLabelColor are
+    /// composited over the wallpaper and become unreadable on colorful ones.
     private func color(for level: UsageLevel) -> NSColor {
         switch level {
-        case .normal: return .labelColor
+        case .normal, .missing: return .labelColor
         case .warning: return .systemOrange
         case .critical: return .systemRed
-        case .missing: return .secondaryLabelColor
         }
+    }
+
+    private func setIcon(_ icon: BarIcon) {
+        statusItem.button?.image = NSImage(systemSymbolName: icon.symbolName, accessibilityDescription: "Claude usage")
     }
 
     private func render() {
         let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         let title = NSMutableAttributedString()
         guard let state = selectedState else {
+            setIcon(.normal)
             statusItem.button?.attributedTitle = NSAttributedString(string: "–", attributes: [.font: font])
             return
         }
-        let (snapshot, dimAll): (UsageSnapshot?, Bool) = {
+        setIcon(BarFormatter.icon(for: state.status))
+        let snapshot: UsageSnapshot? = {
             switch state.status {
-            case .ok(let s): return (s, false)
-            case .stale(let s): return (s, true)
-            case .pending, .notLoggedIn, .reloginNeeded: return (nil, true)
+            case .ok(let s), .stale(let s): return s
+            case .pending, .notLoggedIn, .reloginNeeded: return nil
             }
         }()
         if case .reloginNeeded = state.status {
             title.append(NSAttributedString(string: "!", attributes: [.font: font, .foregroundColor: NSColor.systemRed]))
         } else {
             for seg in BarFormatter.segments(for: snapshot) {
-                let c = dimAll ? NSColor.secondaryLabelColor : color(for: seg.level)
-                title.append(NSAttributedString(string: seg.text, attributes: [.font: font, .foregroundColor: c]))
+                title.append(NSAttributedString(string: seg.text, attributes: [.font: font, .foregroundColor: color(for: seg.level)]))
             }
             if settings.showSessionResetTime, let resetText = BarFormatter.sessionResetText(for: snapshot) {
                 title.append(NSAttributedString(string: " " + resetText,
-                    attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
+                    attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
             }
         }
         statusItem.button?.attributedTitle = title

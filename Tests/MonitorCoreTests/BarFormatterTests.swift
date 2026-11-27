@@ -66,4 +66,20 @@ final class BarFormatterTests: XCTestCase {
         let noSession = UsageSnapshot(session: nil, weekAll: nil, weekSonnet: nil, weekOpus: nil, fetchedAt: Date())
         XCTAssertNil(BarFormatter.sessionResetText(for: noSession))
     }
+
+    func testStaleStatusUsesStaleIcon() {
+        XCTAssertEqual(BarFormatter.icon(for: .stale(snapshot(7, 3, 0))), .stale)
+    }
+
+    func testNonStaleStatusesUseNormalIcon() {
+        XCTAssertEqual(BarFormatter.icon(for: .ok(snapshot(42, 18, 9))), .normal)
+        XCTAssertEqual(BarFormatter.icon(for: .pending), .normal)
+        XCTAssertEqual(BarFormatter.icon(for: .notLoggedIn), .normal)
+        XCTAssertEqual(BarFormatter.icon(for: .reloginNeeded), .normal)
+    }
+
+    func testIconSymbolNames() {
+        XCTAssertEqual(BarIcon.normal.symbolName, "sparkle")
+        XCTAssertEqual(BarIcon.stale.symbolName, "exclamationmark.arrow.circlepath")
+    }
 }

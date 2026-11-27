@@ -13,7 +13,25 @@ public struct BarSegment: Equatable, Sendable {
     }
 }
 
+/// Status icon shown before the numbers. Staleness lives in the icon rather than
+/// in dimmed text, because translucent gray turns unreadable on colorful wallpapers.
+public enum BarIcon: Equatable, Sendable {
+    case normal, stale
+
+    public var symbolName: String {
+        switch self {
+        case .normal: return "sparkle"
+        case .stale: return "exclamationmark.arrow.circlepath"
+        }
+    }
+}
+
 public enum BarFormatter {
+    public static func icon(for status: AccountStatus) -> BarIcon {
+        if case .stale = status { return .stale }
+        return .normal
+    }
+
     public static func level(for utilization: Double?) -> UsageLevel {
         guard let u = utilization else { return .missing }
         if u >= 90 { return .critical }
