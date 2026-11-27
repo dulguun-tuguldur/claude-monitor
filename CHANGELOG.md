@@ -2,6 +2,11 @@
 
 All notable changes to Claude Monitor are documented in this file.
 It is generated from conventional commit messages by git-cliff.
+## [1.3.1] - 2026-11-27
+
+### Bug Fixes
+
+- Keep menu bar text readable on colorful wallpapers
 ## [1.3.0] - 2026-11-27
 
 ### Features
