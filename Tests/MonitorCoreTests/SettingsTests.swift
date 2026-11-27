@@ -18,6 +18,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertNil(settings.selectedAccountId)
         XCTAssertEqual(settings.pollIntervalSeconds, 60)
         XCTAssertTrue(settings.hiddenAccountIds.isEmpty)
+        XCTAssertTrue(settings.showSessionResetTime)
     }
 
     func testRoundTrip() {
@@ -27,6 +28,13 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(settings.selectedAccountId, "/Users/x/.claude-me")
         XCTAssertEqual(settings.pollIntervalSeconds, 120)
         XCTAssertEqual(settings.hiddenAccountIds, ["/Users/x/.claude-backup"])
+    }
+
+    func testSessionResetTimeCanBeHidden() {
+        settings.showSessionResetTime = false
+        XCTAssertFalse(settings.showSessionResetTime)
+        settings.showSessionResetTime = true
+        XCTAssertTrue(settings.showSessionResetTime)
     }
 
     func testIntervalFloor() {

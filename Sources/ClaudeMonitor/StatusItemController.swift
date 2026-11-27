@@ -81,7 +81,7 @@ final class StatusItemController: NSObject {
                 let c = dimAll ? NSColor.secondaryLabelColor : color(for: seg.level)
                 title.append(NSAttributedString(string: seg.text, attributes: [.font: font, .foregroundColor: c]))
             }
-            if let resetText = BarFormatter.sessionResetText(for: snapshot) {
+            if settings.showSessionResetTime, let resetText = BarFormatter.sessionResetText(for: snapshot) {
                 title.append(NSAttributedString(string: " " + resetText,
                     attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor]))
             }
@@ -162,6 +162,7 @@ final class StatusItemController: NSObject {
     @objc private func openSettings() {
         if settingsWindow == nil { settingsWindow = SettingsWindowFactory.make(settings: settings, onChange: { [weak self] in
             self?.schedule()
+            self?.render()
             self?.pollNow()
         }) }
         settingsWindow?.makeKeyAndOrderFront(nil)

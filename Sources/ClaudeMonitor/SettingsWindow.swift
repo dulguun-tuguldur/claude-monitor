@@ -1,5 +1,5 @@
-// ABOUTME: SwiftUI settings window: poll interval, hidden accounts, launch at
-// ABOUTME: login (only when running from the bundled .app), hosted in NSWindow.
+// ABOUTME: SwiftUI settings window: poll interval, reset time, hidden accounts,
+// ABOUTME: launch at login (only when running from the bundled .app), hosted in NSWindow.
 import AppKit
 import SwiftUI
 import ServiceManagement
@@ -10,6 +10,7 @@ struct SettingsView: View {
     let onChange: () -> Void
     @State private var interval: Int
     @State private var hidden: Set<String>
+    @State private var showResetTime: Bool
     @State private var launchAtLogin: Bool
     private let accounts = AccountDiscovery.discover()
     private let isBundled = Bundle.main.bundleIdentifier != nil
@@ -19,6 +20,7 @@ struct SettingsView: View {
         self.onChange = onChange
         _interval = State(initialValue: settings.pollIntervalSeconds)
         _hidden = State(initialValue: settings.hiddenAccountIds)
+        _showResetTime = State(initialValue: settings.showSessionResetTime)
         _launchAtLogin = State(initialValue: SMAppService.mainApp.status == .enabled)
     }
 
@@ -34,6 +36,12 @@ struct SettingsView: View {
                 settings.pollIntervalSeconds = v
                 onChange()
             }
+
+            Toggle("Show session reset time", isOn: $showResetTime)
+                .onChange(of: showResetTime) { on in
+                    settings.showSessionResetTime = on
+                    onChange()
+                }
 
             Section("Accounts shown") {
                 ForEach(accounts) { account in
@@ -72,7 +80,7 @@ enum SettingsWindowFactory {
                               backing: .buffered, defer: false)
         window.title = "Claude Monitor Settings"
         window.contentView = NSHostingView(rootView: SettingsView(settings: settings, onChange: onChange))
-        window.setContentSize(NSSize(width: 340, height: 380))
+        window.setContentSize(NSSize(width: 340, height: 410))
         window.isReleasedWhenClosed = false
         window.center()
         return window

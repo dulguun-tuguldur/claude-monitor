@@ -1,5 +1,5 @@
 // ABOUTME: UserDefaults-backed app settings: selected account, poll interval,
-// ABOUTME: hidden accounts. Explicit suite so `swift run` and the .app agree.
+// ABOUTME: hidden accounts, reset-time display. Explicit suite so `swift run` and the .app agree.
 import Foundation
 
 public final class Settings: @unchecked Sendable {
@@ -26,5 +26,12 @@ public final class Settings: @unchecked Sendable {
     public var hiddenAccountIds: Set<String> {
         get { Set(defaults.stringArray(forKey: "hiddenAccountIds") ?? []) }
         set { defaults.set(Array(newValue).sorted(), forKey: "hiddenAccountIds") }
+    }
+
+    /// Whether the menu bar shows the session reset time after the usage numbers.
+    /// Defaults to true when never set.
+    public var showSessionResetTime: Bool {
+        get { defaults.object(forKey: "showSessionResetTime") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "showSessionResetTime") }
     }
 }
